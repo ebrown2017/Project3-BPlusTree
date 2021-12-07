@@ -291,6 +291,8 @@ class BTreeIndex {
    */
 	Operator	highOp;
 
+  bool rootIsLeaf;
+
 	
  public:
 
