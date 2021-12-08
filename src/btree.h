@@ -293,6 +293,13 @@ class BTreeIndex {
 
   bool rootIsLeaf;
 
+  int32_t pinnedCount;
+  int32_t unpinnedCount;
+
+  const int MAX_INT = 2147483647;
+
+  PageKeyPair<int> insertNode(PageId pageNum, const void *key, const RecordId rid);
+  PageKeyPair<int> insertLeaf(PageId pageNum, const void *key, const RecordId rid);
 	
  public:
 
@@ -366,6 +373,11 @@ class BTreeIndex {
 	 * @throws ScanNotInitializedException If no scan has been initialized.
 	**/
 	void endScan();
+
+  bool getNodeStatus();
+
+  int32_t getPinnedCount();
+  int32_t getUnpinnedCount();
 	
 };
 

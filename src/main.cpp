@@ -63,15 +63,41 @@ BufMgr * bufMgr = new BufMgr(100);
 // Forward declarations
 // -----------------------------------------------------------------------------
 
+// default tests
 void createRelationForward();
 void createRelationBackward();
 void createRelationRandom();
 void intTests();
 int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator highOp);
 void indexTests();
+
+// Given tests
 void test1();
 void test2();
 void test3();
+
+// TEST 5
+void test5();
+void rootTests();
+void checkRoot();
+
+void test8();
+void test9();
+void test10();
+void test11();
+void test12();
+
+
+/*
+TODO - Needs to be added
+
+void test4();
+void test6();
+void test7();
+void test10();
+void test11();
+void test12();
+*/
 void errorTests();
 void deleteRelation();
 
@@ -105,7 +131,6 @@ int main(int argc, char **argv)
 			new_page.insertRecord(new_data);
 			new_file.writePage(new_page_number, new_page);
 		}
-
 	}
 	// new_file goes out of scope here, so file is automatically closed.
 
@@ -176,6 +201,148 @@ void test3()
 	indexTests();
 	deleteRelation();
 }
+
+/*
+this test will insert nodes into an empty b+ tree
+*/
+// void test4()
+// {
+	//create empty tree
+// 	//insert into an empty tree
+// 	//verfiy the root's value has been changed to the value inserted
+// 	std::cout << "--------------------" << std::endl;
+// 	std::cout << "Custom test 1: inserting into B+ tree" << std::endl;
+	
+	
+// }
+
+
+// this test will insert nodes into a tree that has a full root node causing a split to occur
+
+void test5()
+{
+	// fills the B+ tree with random nodes, checks to see that parent isn't leaf
+	std::cout << "--------------------" << std::endl;
+	std::cout << "Custom Test 1: Check to see root not leaf" << std::endl;
+	createRelationRandom();
+	rootTests();
+	deleteRelation();
+}
+
+/*
+this test will insert nodes into a tree that has a full parent node and a full child node causing a split to occur
+void test6()
+{
+	//create tree or realtion?
+	//insert 2d+1 values into a tree causing the root to be split
+	//insert 2d values into the tree under a condition that will cause them to all be placed in the same child of a parent node
+	//verify that the 
+}
+*/
+
+/*
+this test will verify the interactions between a b+ tree and the disk while adding new nodes
+void test7()
+{
+	//not sure how to go about this 
+}
+*/
+
+/*
+this test throws a BadOpcodesException from startScan()
+*/
+void test8()
+{
+	try
+	{
+		createRelationRandom();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		index->startScan(10, LT, 100, GT);
+		cout << "Test 8 failed, no BadOpcodesException thrown";
+	}
+	catch(BadOpcodesException e)
+	{
+		cout << "Test 8 Passed";
+	}
+}
+
+/*
+this test throws a BadScanrangeException from startScan()
+*/
+void test9()
+{
+	try
+	{
+		createRelationRandom();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		index->startScan(100, GT, 10, LT);
+		cout << "Test 9 failed, no BadScanrangeException thrown";
+	}
+	catch(BadScanrangeException e)
+	{
+		cout << "Test 9 Passed";		
+	}
+}
+
+/*
+this test throws a ScanNotInitializedException from endScan()
+*/
+void test10()
+{
+	try
+	{
+		createRelationRandom();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		index->endScan();
+		cout << "Test 10 failed, endScan() ran without a Scan running";
+	}
+	catch(ScanNotInitializedException e )
+	{
+		cout << "Test 10 Passed";
+	}
+}
+
+/*
+this test throws a IndexScanCompletedException from scanNext()
+*/
+void test11()
+{
+	try{
+		createRelationRandom();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		index->startScan(10, GT, 100, LT);
+		cout << "Test 11 failed, no IndexScanCompletedException was thrown";
+	}
+	catch(IndexScanCompletedException e )
+	{
+		cout << "Test 11 passed";
+	}
+}
+
+/*
+this test checks if pages are pinned and unpinned throughout the cycle of a scan
+*/
+void test12()
+{
+	createRelationRandom();
+	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	index->startScan(10, GT, 100, LT);
+
+	if (index->getPinnedCount() == index->getUnpinnedCount())
+	{
+		cout << "Test 12 passed";
+	}
+	else
+	{
+		cout << "Test 12 failed, pin/unpinned count mismatch";
+	}
+}
+
+
+
+
+
+
 
 // -----------------------------------------------------------------------------
 // createRelationForward
@@ -353,6 +520,32 @@ void indexTests()
   catch(const FileNotFoundException &e)
   {
   }
+}
+
+void rootTests()
+{
+  	checkRoot();
+	try
+	{
+		File::remove(intIndexName);
+	}
+  catch(const FileNotFoundException &e)
+  {
+  }
+}
+
+void checkRoot()
+{
+	std::cout << "Custom Test 1: Random B+ Tree, check to see Root not leaf" << std::endl;
+  	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	bool nodeStatus = index->checkNodeStatus();
+	if (nodeStatus) {
+		std::cout << "Custom Test 1: FAILED: Root is leaf" << std::endl;
+	}
+	else
+	{
+		std::cout << "Custom Test 1: PASSED: Root is not leaf" << std::endl;
+	}
 }
 
 // -----------------------------------------------------------------------------
