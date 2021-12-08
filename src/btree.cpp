@@ -115,7 +115,9 @@ BTreeIndex::BTreeIndex(const std::string & relationName,
 			{
 				RecordId rid;
 				fscan.scanNext(rid);
-				insertEntry(fscan.getRecord().c_str() + attrByteOffset, rid);
+				std::string recordStr = fscan.getRecord();
+				const char *record = recordStr.c_str();
+				insertEntry(record + offsetof (RECORD, i)), rid);
 			
 			}
 			catch(EndOfFileException& e)
@@ -329,6 +331,7 @@ PageKeyPair<int> BTreeIndex::insertNode(PageId pageNum, const void *key, const R
 			PageId splitID;
 			bufMgr->allocPage(file, splitID, splitPage);
 			NonLeafNodeInt* splitNode = (NonLeafNodeInt*) splitPage;
+			splitNode->level = node->level;
 			
 			int mid = (nodeOccupancy) / 2;
 
