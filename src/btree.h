@@ -375,6 +375,7 @@ class BTreeIndex {
 	void endScan();
 
   bool getNodeStatus();
+  bool getRootIsLead();
 
   int32_t getPinnedCount();
   int32_t getUnpinnedCount();
