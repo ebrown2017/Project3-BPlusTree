@@ -20,6 +20,7 @@
 #include "exceptions/scan_not_initialized_exception.h"
 #include "exceptions/end_of_file_exception.h"
 #include <random>
+#include <chrono>
 
 #define checkPassFail(a, b) 																				\
 {																																		\
@@ -68,6 +69,7 @@ BufMgr * bufMgr = new BufMgr(100);
 void createRelationForward();
 void createRelationBackward();
 void createRelationRandom();
+void createRelationRandomSize(int relSize);
 void intTests();
 int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator highOp);
 void indexTests();
@@ -88,6 +90,9 @@ void test7();
 void test8();
 void test9();
 void test10();
+void test11();
+void test12();
+void test13();
 
 void errorTests();
 void deleteRelation();
@@ -158,6 +163,9 @@ int main(int argc, char **argv)
 	test8();
 	test9();
 	test10();
+	test11();
+	test12();
+	test13();
 	
 	errorTests();
 
@@ -232,35 +240,8 @@ void test4()
 	deleteRelation();
 }
 
-void test5()
-{
-	// fills the B+ tree with random nodes, checks to see that parent isn't leaf
-	std::cout << "--------------------" << std::endl;
-	std::cout << "Test 5: Check to see root not leaf" << std::endl;
-	createRelationRandom();
-	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-	
-	bool nodeStatus = index.getNodeStatus();
-	
-	if (nodeStatus) 
-	{
-		std::cout << "Test 5: FAILED: Root is leaf" << std::endl;
-	}
-	else
-	{
-		std::cout << "Test 5: PASSED: Root is not leaf" << std::endl;
-	}
-	try
-	{
-		File::remove(intIndexName);
-	}
-    catch(const FileNotFoundException &e)
-    {
-    }
-	deleteRelation();
-}
 
-void test6()
+void test5()
 {
 	// creates a random relation, tries to start a scan with invalid opcodes
 	try
@@ -270,12 +251,39 @@ void test6()
 		int lowval = 10;
 		int highval = 100;
 		index.startScan(&lowval, LT, &highval, GT);
-		std::cout << "Test 6 failed, no BadOpcodesException thrown" << std::endl;
+		std::cout << "Test 5 failed, no BadOpcodesException thrown" << std::endl;
 	}
 	catch(BadOpcodesException& e)
 	{
-		std::cout << "Test 6 Passed" << std::endl;
+		std::cout << "Test 5 Passed" << std::endl;
 		
+	}
+	try
+	{
+		File::remove(intIndexName);
+	}
+  catch(const FileNotFoundException &e)
+  {
+  }
+	deleteRelation();
+}
+
+void test6()
+{
+	// Test tries to start a scan with an invalid scan range
+	try
+	{
+		createRelationRandom();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		int lowval = 100;
+		int highval = 10;
+		index.startScan(&lowval, GT, &highval, LT);
+		index.endScan();
+		std::cout << "Test 6 failed, no BadScanrangeException thrown" << std::endl;
+	}
+	catch(BadScanrangeException& e)
+	{
+		std::cout << "Test 6 Passed" << std::endl;		
 	}
 	try
 	{
@@ -289,20 +297,17 @@ void test6()
 
 void test7()
 {
-	// Test tries to start a scan with an invalid scan range
+	// Test tries to end a scan before starting one
 	try
 	{
 		createRelationRandom();
 		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-		int lowval = 100;
-		int highval = 10;
-		index.startScan(&lowval, GT, &highval, LT);
 		index.endScan();
-		std::cout << "Test 7 failed, no BadScanrangeException thrown" << std::endl;
+		std::cout << "Test 7 failed, endScan() ran without a Scan running" << std::endl;
 	}
-	catch(BadScanrangeException& e)
+	catch(ScanNotInitializedException& e )
 	{
-		std::cout << "Test 7 Passed" << std::endl;		
+		std::cout << "Test 7 Passed" << std::endl;
 	}
 	try
 	{
@@ -315,30 +320,6 @@ void test7()
 }
 
 void test8()
-{
-	// Test tries to end a scan before starting one
-	try
-	{
-		createRelationRandom();
-		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-		index.endScan();
-		std::cout << "Test 8 failed, endScan() ran without a Scan running" << std::endl;
-	}
-	catch(ScanNotInitializedException& e )
-	{
-		std::cout << "Test 8 Passed" << std::endl;
-	}
-	try
-	{
-		File::remove(intIndexName);
-	}
-  catch(const FileNotFoundException &e)
-  {
-  }
-	deleteRelation();
-}
-
-void test9()
 {
 	// Test tries to scan next when the scan is complete
 	try
@@ -353,11 +334,38 @@ void test9()
 		{
 			index.scanNext(outRid);
 		}
-		std::cout << "Test 9 failed, no IndexScanCompletedException was thrown" << std::endl;
+		std::cout << "Test 8 failed, no IndexScanCompletedException was thrown" << std::endl;
 	}
 	catch(IndexScanCompletedException& e )
 	{
+		std::cout << "Test 8 passed" << std::endl;
+	}
+	try
+	{
+		File::remove(intIndexName);
+	}
+  catch(const FileNotFoundException &e)
+  {
+  }
+	deleteRelation();
+}
+
+void test9()
+{
+	// Test checks if pages are pinned and unpinned equally throughout the cycle of a scan
+	createRelationRandom();
+	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	int lowval = 10;
+	int highval = 100;
+	index.startScan(&lowval, GT, &highval, LT);
+
+	if (index.getPinnedCount() == index.getUnpinnedCount())
+	{
 		std::cout << "Test 9 passed" << std::endl;
+	}
+	else
+	{
+		std::cout << "Test 9 failed, pin/unpinned count mismatch" << std::endl;
 	}
 	try
 	{
@@ -371,20 +379,26 @@ void test9()
 
 void test10()
 {
-	// Test checks if pages are pinned and unpinned equally throughout the cycle of a scan
-	createRelationRandom();
-	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-	int lowval = 10;
-	int highval = 100;
-	index.startScan(&lowval, GT, &highval, LT);
-
-	if (index.getPinnedCount() == index.getUnpinnedCount())
+	
+	// Test creates a forward relation and checks to see if root isnt a leaf, this indicates that a split occurred
+	std::cout << "--------------------" << std::endl;
+	std::cout << "Test 10: checking split functionality" << std::endl;
+	try
 	{
-		std::cout << "Test 10 passed" << std::endl;
+		createRelationForward();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		if (index.getNodeStatus())
+		{
+			std::cout << "Test 10 failed, no split occurred" << std::endl;
+		}
+		else
+		{
+			std::cout << "Test 10 passed, a split occurred" << std::endl;
+		}
 	}
-	else
+	catch(BadOpcodesException& e)
 	{
-		std::cout << "Test 10 failed, pin/unpinned count mismatch" << std::endl;
+		std::cout << "Test 10 Passed" << std::endl;
 	}
 	try
 	{
@@ -396,6 +410,94 @@ void test10()
 	deleteRelation();
 }
 
+
+void test11()
+{
+	// Test creates a backward relation and checks to see if root isnt a leaf, this indicates that a split occurred
+	std::cout << "--------------------" << std::endl;
+	std::cout << "Test 11: checking split functionality" << std::endl;
+	try
+	{
+		createRelationBackward();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		if (index.getNodeStatus())
+		{
+			std::cout << "Test 11 failed, no split occurred" << std::endl;
+		}
+		else
+		{
+			std::cout << "Test 11 passed, a split occurred" << std::endl;
+		}
+	}
+	catch(BadOpcodesException& e)
+	{
+		std::cout << "Test 11 Passed" << std::endl;
+	}
+	try
+	{
+		File::remove(intIndexName);
+	}
+  catch(const FileNotFoundException &e)
+  {
+  }
+	deleteRelation();
+}
+
+void test12()
+{
+	// Create a relation with 50000 tuples in random order and perform index tests 
+	std::cout << "Test 12: relation with 50000 tuples" << std::endl;
+	createRelationRandomSize(50000);
+	auto begin = chrono::high_resolution_clock::now();
+	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	auto end = chrono::high_resolution_clock::now();
+	auto durMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+	std::cout << "Inserting 50,000 tuples took: " << ms << " milliseconds" << std::end1;
+
+	// run some tests
+	checkPassFail(intScan(&index,25,GT,40,LT), 14)
+	checkPassFail(intScan(&index,20,GTE,35,LTE), 16)
+	checkPassFail(intScan(&index,-3,GT,3,LT), 3)
+	checkPassFail(intScan(&index,996,GT,1001,LT), 4)
+	checkPassFail(intScan(&index,0,GT,1,LT), 0)
+	checkPassFail(intScan(&index,300,GT,400,LT), 99)
+	checkPassFail(intScan(&index,3000,GTE,4000,LT), 1000)
+	checkPassFail(intScan(&index,8000,GT, 30000, LTE), 22000)
+	checkPassFail(intScan(&index,42000,GTE, 60000, LTE), 8000)
+	checkPassFail(intScan(&index,28000,GT, 28002, LT), 1)
+	checkPassFail(intScan(&index,0, GTE, 50000, LT), 50000)
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+}
+
+void test13()
+{
+	std::cout << "Test 13: relation with no tuples" << std::endl;
+	createRelationRandomSize(0);
+	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+
+	// run some tests
+	checkPassFail(intScan(&index,2,GT,10,LT), 0)
+	checkPassFail(intScan( &index, -2, GTE, 2, LTE), 0)
+	
+	
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+}
 
 // -----------------------------------------------------------------------------
 // createRelationForward
@@ -552,6 +654,68 @@ void createRelationRandom()
 
 		int temp = intvec[relationSize-1-i];
 		intvec[relationSize-1-i] = intvec[pos];
+		intvec[pos] = temp;
+		i++;
+  }
+  
+	file1->writePage(new_page_number, new_page);
+}
+
+// insert given number of relations in random order 
+void createRelationRandomSize(int relSize)
+{
+  // destroy any old copies of relation file
+	try
+	{
+		File::remove(relationName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+	}
+  file1 = new PageFile(relationName, true);
+
+  // initialize all of record1.s to keep purify happy
+  memset(record1.s, ' ', sizeof(record1.s));
+	PageId new_page_number;
+  Page new_page = file1->allocatePage(new_page_number);
+
+  // insert records in random order
+
+  std::vector<int> intvec(relSize);
+  for( int i = 0; i < relSize; i++ )
+  {
+    intvec[i] = i;
+  }
+
+  long pos;
+  int val;
+	int i = 0;
+  while( i < relSize )
+  {
+    pos = rand() % (relSize-i);
+    val = intvec[pos];
+    sprintf(record1.s, "%05d string record", val);
+    record1.i = val;
+    record1.d = val;
+
+    std::string new_data(reinterpret_cast<char*>(&record1), sizeof(RECORD));
+
+		while(1)
+		{
+			try
+			{
+    		new_page.insertRecord(new_data);
+				break;
+			}
+			catch(const InsufficientSpaceException &e)
+			{
+      	file1->writePage(new_page_number, new_page);
+  			new_page = file1->allocatePage(new_page_number);
+			}
+		}
+
+		int temp = intvec[relSize-1-i];
+		intvec[relSize-1-i] = intvec[pos];
 		intvec[pos] = temp;
 		i++;
   }

@@ -59,6 +59,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         nodeOccupancy = INTARRAYNONLEAFSIZE;
         attributeType = attrType;
         this->attrByteOffset = attrByteOffset;
+        scanExecuting = false;
 
         try
         {
@@ -176,17 +177,21 @@ header page for the B+ Tree file too for storing metadata of the index.
             split = insertNode(rootPageNum, key, rid);
         }
 
+		// check if the root is to be split
         if (split.key != MAX_INT)
         {
+			// create new root node
             Page* page;
             PageId pageNum;
 
             bufMgr->allocPage(file, pageNum, page);
             bufMgr->unPinPage(file, pageNum, false);
+
             NonLeafNodeInt* node = (NonLeafNodeInt*) page;
             node->keyArray[0] = split.key;
             node->pageNoArray[0] = rootPageNum;
             node->pageNoArray[1] = split.pageNo;
+
             rootPageNum = pageNum;
 
             for (int i = 1; i < nodeOccupancy; i++)
@@ -217,6 +222,8 @@ header page for the B+ Tree file too for storing metadata of the index.
         bufMgr->unPinPage(file, pageNum, false);
         pinnedCount += 1;
         NonLeafNodeInt* node = (NonLeafNodeInt*) page;
+
+		// find the smallest entry in the node with a key >= the element we are inserting
         int index = 0;
         int k = *((int*) key);
         while (index < INTARRAYNONLEAFSIZE && node->keyArray[index] < k)
@@ -237,7 +244,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         PageKeyPair<int> pair;
         if (split.key != MAX_INT)
         {
-            if (node->keyArray[nodeOccupancy - 1] == MAX_INT)
+            if (node->keyArray[nodeOccupancy - 1] != MAX_INT)
             {
                 //split node
 
@@ -247,6 +254,11 @@ header page for the B+ Tree file too for storing metadata of the index.
                 bufMgr->unPinPage(file, splitID, false);
                 NonLeafNodeInt* splitNode = (NonLeafNodeInt*) splitPage;
                 splitNode->level = node->level;
+
+                for (int i = 0; i < nodeOccupancy; i++)
+                {
+                    splitNode->keyArray[i] = MAX_INT;
+                }
 
                 int mid = (nodeOccupancy) / 2;
 
@@ -258,10 +270,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                         splitNode->pageNoArray[i - mid + 1] = node->pageNoArray[i + 1];
                     }
                     splitNode->keyArray[0] = split.pageNo;
-                    for (int i = nodeOccupancy - mid; i < nodeOccupancy; i++)
-                    {
-                        splitNode->keyArray[i] = MAX_INT;
-                    }
+                    
                     for (int i = mid; i < nodeOccupancy; i++)
                     {
                         node->keyArray[i] = MAX_INT;
@@ -275,10 +284,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                     {
                         splitNode->keyArray[i - mid] = node->keyArray[i];
                         splitNode->pageNoArray[i - mid + 1] = node->pageNoArray[i + 1];
-                    }
-                    for (int i = nodeOccupancy - mid; i < nodeOccupancy; i++)
-                    {
-                        splitNode-> keyArray[i] = MAX_INT;
                     }
 
                     splitNode->pageNoArray[0] = node->pageNoArray[mid];
@@ -318,11 +323,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                         splitNode->pageNoArray[i - mid + 2] = node->pageNoArray[i + 1];
                     }
 
-                    for (int i = nodeOccupancy - mid + 1; i < nodeOccupancy; i++)
-                    {
-                        splitNode->keyArray[i] = MAX_INT;
-                    }
-
                     for (int i = mid - 1; i < nodeOccupancy; i++)
                     {
                         node->keyArray[i] = MAX_INT;
@@ -342,7 +342,10 @@ header page for the B+ Tree file too for storing metadata of the index.
                 pair.set(MAX_INT, MAX_INT);
             }
         }
-        pair.set(MAX_INT, MAX_INT);
+        else
+        {
+            pair.set(MAX_INT, MAX_INT);
+        }
         unpinnedCount += 1;
         return pair;
     }
@@ -361,10 +364,12 @@ header page for the B+ Tree file too for storing metadata of the index.
             index++;
         }
 
+		// if the leaf is full, split into two leaves
         if (leaf->keyArray[leafOccupancy - 1] != MAX_INT)
         {
             //split node
 
+			// create the new leaf
             Page* split;
             PageId splitID;
             bufMgr->allocPage(file, splitID, split);
@@ -377,6 +382,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
             if (index < mid)
             {
+				// copies the second half of the leaf to the new leaf
                 for (int i = mid; i < leafOccupancy; i++)
                 {
                     splitNode->keyArray[i - mid] = leaf->keyArray[i];
@@ -387,6 +393,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                     splitNode-> keyArray[i] = MAX_INT;
                 }
 
+				// shifts the elements greater than the element we are inserting right
                 for (int i = mid - 1; i >= index; i--)
                 {
                     leaf->keyArray[i + 1] = leaf->keyArray[i];
@@ -459,8 +466,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                                const void* highValParm,
                                const Operator highOpParm)
     {
-
-
+		// check if operators are valid
         if (lowOpParm != GT && lowOpParm != GTE)
         {
             throw BadOpcodesException();
@@ -487,6 +493,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         bufMgr->unPinPage(file, pageNum, false);
         pinnedCount += 1;
 
+		// if the root isn't a leaf node, traverse the B+ tree until we reach a leaf
         if (!rootIsLeaf)
         {
             NonLeafNodeInt* node = (NonLeafNodeInt*) page;
@@ -513,11 +520,13 @@ header page for the B+ Tree file too for storing metadata of the index.
 
         LeafNodeInt* leaf = (LeafNodeInt*) page;
         int index = 0;
+		// find the first node >= the lower bound of our range
         while(index < INTARRAYLEAFSIZE && leaf->keyArray[index] < lowValInt)
         {
             index++;
         }
 
+		// If the range is exclusive, find the first node > the lower bound of our range
         if (lowOp == GT)
         {
             while(index < INTARRAYLEAFSIZE && leaf->keyArray[index] <= lowValInt)
@@ -526,24 +535,24 @@ header page for the B+ Tree file too for storing metadata of the index.
             }
         }
 
+		// every element in our B+ tree is below the range we are searching for
         if (index >= INTARRAYLEAFSIZE)
         {
-            unpinnedCount += 1;
             throw NoSuchKeyFoundException();
         }
 
+		//  No elements within the range
         if (highOp == LT && leaf->keyArray[index] >= highValInt)
         {
-            unpinnedCount += 1;
             throw NoSuchKeyFoundException();
         }
 
         if (highOp == LTE && leaf->keyArray[index] > highValInt)
         {
-            unpinnedCount += 1;
             throw NoSuchKeyFoundException();
         }
 
+		// mark which entry is the first in range
         nextEntry = index;
         currentPageNum = pageNum;
         currentPageData = page;
@@ -563,7 +572,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
         LeafNodeInt* leaf = (LeafNodeInt*) currentPageData;
 
-        if (leaf->keyArray[nextEntry] == MAX_INT)
+        if (nextEntry >= leafOccupancy || leaf->keyArray[nextEntry] == MAX_INT)
         {
             if (leaf->rightSibPageNo == (PageId) MAX_INT)
             {
@@ -603,8 +612,6 @@ header page for the B+ Tree file too for storing metadata of the index.
         {
             throw ScanNotInitializedException();
         }
-
-        unpinnedCount += 1;
 
         scanExecuting = false;
     }
