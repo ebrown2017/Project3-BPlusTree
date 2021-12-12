@@ -73,6 +73,9 @@ void createRelationRandomSize(int relSize);
 void intTests();
 int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator highOp);
 void indexTests();
+void largeTests(BTreeIndex *index);
+void emptyTests();
+void smallTests();
 
 // Given tests
 void test1();
@@ -93,6 +96,7 @@ void test10();
 void test11();
 void test12();
 void test13();
+void test14();
 
 void errorTests();
 void deleteRelation();
@@ -160,6 +164,8 @@ int main(int argc, char **argv)
 	test3();
 	test4();
 	test5();
+	test6();
+	test7();
 	test8();
 	test9();
 	test10();
@@ -251,6 +257,7 @@ void test5()
 		int lowval = 10;
 		int highval = 100;
 		index.startScan(&lowval, LT, &highval, GT);
+		index.endScan();
 		std::cout << "Test 5 failed, no BadOpcodesException thrown" << std::endl;
 	}
 	catch(BadOpcodesException& e)
@@ -285,13 +292,15 @@ void test6()
 	{
 		std::cout << "Test 6 Passed" << std::endl;		
 	}
+
 	try
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
 }
 
@@ -313,9 +322,10 @@ void test7()
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
 }
 
@@ -329,63 +339,77 @@ void test8()
 		int lowval = 10;
 		int highval = 100;
 		index.startScan(&lowval, GT, &highval, LT);
-		RecordId outRid;
-		for (int i = 0; i < 5001; i++)
+		try
 		{
-			index.scanNext(outRid);
+			RecordId outRid;
+			for (int i = 0; i < 5001; i++)
+			{
+				index.scanNext(outRid);
+			}
+			std::cout << "Test 8 failed, no IndexScanCompletedException was thrown" << std::endl;
 		}
-		std::cout << "Test 8 failed, no IndexScanCompletedException was thrown" << std::endl;
+		catch(IndexScanCompletedException& e )
+		{
+			std::cout << "Test 8 passed" << std::endl;
+		}
+		index.endScan();
 	}
-	catch(IndexScanCompletedException& e )
+	catch(std::exception& e)
 	{
-		std::cout << "Test 8 passed" << std::endl;
+		std::cout << "Test 8 failed, exception was thrown"<< std::endl;
 	}
 	try
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
 }
 
 void test9()
 {
-	// Test checks if pages are pinned and unpinned equally throughout the cycle of a scan
-	createRelationRandom();
-	BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-	int lowval = 10;
-	int highval = 100;
-	index.startScan(&lowval, GT, &highval, LT);
-
-	if (index.getPinnedCount() == index.getUnpinnedCount())
+	// Test creates a forward relation and checks to see if root isnt a leaf, this indicates that a split occurred
+	std::cout << "--------------------" << std::endl;
+	std::cout << "Test 9: checking split functionality" << std::endl;
+	try
 	{
-		std::cout << "Test 9 passed" << std::endl;
+		createRelationForward();
+		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		if (index.getNodeStatus())
+		{
+			std::cout << "Test 9 failed, no split occurred" << std::endl;
+		}
+		else
+		{
+			std::cout << "Test 9 passed, a split occurred" << std::endl;
+		}
 	}
-	else
+	catch(BadOpcodesException& e)
 	{
-		std::cout << "Test 9 failed, pin/unpinned count mismatch" << std::endl;
+		std::cout << "Test 9 Passed" << std::endl;
 	}
 	try
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
 }
 
 void test10()
 {
-	
-	// Test creates a forward relation and checks to see if root isnt a leaf, this indicates that a split occurred
+	// Test creates a backward relation and checks to see if root isnt a leaf, this indicates that a split occurred
 	std::cout << "--------------------" << std::endl;
 	std::cout << "Test 10: checking split functionality" << std::endl;
 	try
 	{
-		createRelationForward();
+		createRelationBackward();
 		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
 		if (index.getNodeStatus())
 		{
@@ -410,62 +434,67 @@ void test10()
 	deleteRelation();
 }
 
-
 void test11()
 {
-	// Test creates a backward relation and checks to see if root isnt a leaf, this indicates that a split occurred
-	std::cout << "--------------------" << std::endl;
-	std::cout << "Test 11: checking split functionality" << std::endl;
+	// Create a relation with 50000 tuples in random order and perform index tests 
+	std::cout << "Test 11: relation with 100000 tuples" << std::endl;
+	createRelationRandomSize(100000);
 	try
 	{
-		createRelationBackward();
-		BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-		if (index.getNodeStatus())
-		{
-			std::cout << "Test 11 failed, no split occurred" << std::endl;
-		}
-		else
-		{
-			std::cout << "Test 11 passed, a split occurred" << std::endl;
-		}
+		auto begin = std::chrono::high_resolution_clock::now();
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		auto end = std::chrono::high_resolution_clock::now();
+		auto durMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+		std::cout << "Inserting 100,000 tuples took: " << durMs << " milliseconds" << std::endl;
+		largeTests(&index);
 	}
-	catch(BadOpcodesException& e)
+	catch(const std::exception& e)
 	{
-		std::cout << "Test 11 Passed" << std::endl;
+		
 	}
+	
 	try
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
+}
+
+void largeTests(BTreeIndex* index)
+{
+	checkPassFail(intScan(index,25,GT,40,LT), 14)
+	checkPassFail(intScan(index,20,GTE,35,LTE), 16)
+	checkPassFail(intScan(index,-3,GT,3,LT), 3)
+	checkPassFail(intScan(index,996,GT,1001,LT), 4)
+	checkPassFail(intScan(index,0,GT,1,LT), 0)
+	checkPassFail(intScan(index,300,GT,400,LT), 99)
+	checkPassFail(intScan(index,3000,GTE,4000,LT), 1000)
+	checkPassFail(intScan(index,8000,GT, 30000, LTE), 22000)
+	checkPassFail(intScan(index,42000,GTE, 60000, LTE), 18001)
+	checkPassFail(intScan(index,28000,GT, 28002, LT), 1)
+	checkPassFail(intScan(index,0, GTE, 50000, LT), 50000)
+	checkPassFail(intScan(index,0,GTE,50000,LT), 50000)
+	checkPassFail(intScan(index,50000,GTE,100000,LT), 50000)
+	checkPassFail(intScan(index, 69000, GT, 96000, LTE), 27000)
+	checkPassFail(intScan(index, 12345, GT, 54321, LTE), 41976)
+	checkPassFail(intScan(index, 22222, GT, 88888, LTE), 66666)
+	checkPassFail(intScan(index, 1, GTE, 69696, LTE), 69696)
+	checkPassFail(intScan(index, 99990, GT, 200000, LTE), 9)
 }
 
 void test12()
 {
-	// Create a relation with 50000 tuples in random order and perform index tests 
-	std::cout << "Test 12: relation with 50000 tuples" << std::endl;
-	createRelationRandomSize(50000);
-	auto begin = chrono::high_resolution_clock::now();
-	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-	auto end = chrono::high_resolution_clock::now();
-	auto durMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-	std::cout << "Inserting 50,000 tuples took: " << ms << " milliseconds" << std::end1;
+	std::cout << "Test 12: relation with no tuples" << std::endl;
+	createRelationRandomSize(0);
+	
 
 	// run some tests
-	checkPassFail(intScan(&index,25,GT,40,LT), 14)
-	checkPassFail(intScan(&index,20,GTE,35,LTE), 16)
-	checkPassFail(intScan(&index,-3,GT,3,LT), 3)
-	checkPassFail(intScan(&index,996,GT,1001,LT), 4)
-	checkPassFail(intScan(&index,0,GT,1,LT), 0)
-	checkPassFail(intScan(&index,300,GT,400,LT), 99)
-	checkPassFail(intScan(&index,3000,GTE,4000,LT), 1000)
-	checkPassFail(intScan(&index,8000,GT, 30000, LTE), 22000)
-	checkPassFail(intScan(&index,42000,GTE, 60000, LTE), 8000)
-	checkPassFail(intScan(&index,28000,GT, 28002, LT), 1)
-	checkPassFail(intScan(&index,0, GTE, 50000, LT), 50000)
+	emptyTests();
+	
 	try
 	{
 		File::remove(intIndexName);
@@ -479,14 +508,18 @@ void test12()
 
 void test13()
 {
-	std::cout << "Test 13: relation with no tuples" << std::endl;
-	createRelationRandomSize(0);
-	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	std::cout << "Test 14: relation with 50000 tuples" << std::endl;
+	createRelationRandomSize(100000);
+	try
+	{
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER, 100, 60);
+		largeTests(&index);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "test failed" << std::endl;
+	}
 
-	// run some tests
-	checkPassFail(intScan(&index,2,GT,10,LT), 0)
-	checkPassFail(intScan( &index, -2, GTE, 2, LTE), 0)
-	
 	
 	try
 	{
@@ -497,6 +530,13 @@ void test13()
 
 	}
 	deleteRelation();
+}
+
+void emptyTests()
+{
+	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+	checkPassFail(intScan(&index,2,GT,10,LT), 0)
+	checkPassFail(intScan( &index, -2, GTE, 2, LTE), 0)
 }
 
 // -----------------------------------------------------------------------------

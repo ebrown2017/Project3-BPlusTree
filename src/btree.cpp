@@ -51,9 +51,6 @@ header page for the B+ Tree file too for storing metadata of the index.
         idxStr << relationName << '.' << attrByteOffset;
         outIndexName = idxStr.str();
 
-        pinnedCount = 0;
-        unpinnedCount = 0;
-
         bufMgr = bufMgrIn;
         leafOccupancy = INTARRAYLEAFSIZE;
         nodeOccupancy = INTARRAYNONLEAFSIZE;
@@ -68,16 +65,11 @@ header page for the B+ Tree file too for storing metadata of the index.
             headerPageNum = file->getFirstPageNo();
             Page* headerPage;
             bufMgr->readPage(file, headerPageNum, headerPage);
-            pinnedCount += 1;
             IndexMetaInfo* metaInfo = (IndexMetaInfo*) headerPage;
-            metaInfo->attrByteOffset = attrByteOffset;
-            metaInfo->attrType = attrType;
             rootPageNum = metaInfo->rootPageNo;
-            strncpy(metaInfo->relationName, relationName.c_str(), relationName.length());
             bufMgr->unPinPage(file, headerPageNum, false);
-            unpinnedCount += 1;
 
-            rootIsLeaf = true;
+            rootIsLeaf = metaInfo->rootIsLeaf;
 
         }
         catch (FileNotFoundException& e)
@@ -104,11 +96,10 @@ header page for the B+ Tree file too for storing metadata of the index.
             }
 
             rootIsLeaf = true;
+            metaInfo->rootIsLeaf = true;
 
-            bufMgr->unPinPage(file, headerPageNum, false);
-            unpinnedCount += 1;
-            bufMgr->unPinPage(file, rootPageNum, false);
-            unpinnedCount += 1;
+            bufMgr->unPinPage(file, headerPageNum, true);
+            bufMgr->unPinPage(file, rootPageNum, true);
 
             FileScan fscan(relationName, bufMgr);
 
@@ -127,7 +118,87 @@ header page for the B+ Tree file too for storing metadata of the index.
                 {
                     break;
                 }
+            }
+        }
+    }
 
+    BTreeIndex::BTreeIndex(const std::string & relationName,
+                           std::string & outIndexName,
+                           BufMgr *bufMgrIn,
+                           const int attrByteOffset,
+                           const Datatype attrType, const int nodeOccupancy, const int leafOccupancy)
+    {
+        std::ostringstream idxStr;
+        idxStr << relationName << '.' << attrByteOffset;
+        outIndexName = idxStr.str();
+
+        bufMgr = bufMgrIn;
+        this->leafOccupancy = leafOccupancy;
+        this->nodeOccupancy = nodeOccupancy;
+        attributeType = attrType;
+        this->attrByteOffset = attrByteOffset;
+        scanExecuting = false;
+
+        try
+        {
+            file = new BlobFile(outIndexName, false);
+
+            headerPageNum = file->getFirstPageNo();
+            Page* headerPage;
+            bufMgr->readPage(file, headerPageNum, headerPage);
+            IndexMetaInfo* metaInfo = (IndexMetaInfo*) headerPage;
+            rootPageNum = metaInfo->rootPageNo;
+            bufMgr->unPinPage(file, headerPageNum, false);
+
+            rootIsLeaf = metaInfo->rootIsLeaf;
+
+        }
+        catch (FileNotFoundException& e)
+        {
+            file = new BlobFile(outIndexName, true);
+
+            Page* headerPage;
+            bufMgr->allocPage(file, headerPageNum, headerPage);
+
+            Page* rootPage;
+            bufMgr->allocPage(file, rootPageNum, rootPage);
+
+            IndexMetaInfo* metaInfo = (IndexMetaInfo*) headerPage;
+            metaInfo->attrByteOffset = attrByteOffset;
+            metaInfo->attrType = attrType;
+            metaInfo->rootPageNo = rootPageNum;
+            strncpy(metaInfo->relationName, relationName.c_str(), relationName.length());
+
+            LeafNodeInt* root = (LeafNodeInt*) rootPage;
+            root->rightSibPageNo = MAX_INT;
+            for (int i = 0; i < leafOccupancy; i++)
+            {
+                root->keyArray[i] = MAX_INT;
+            }
+
+            rootIsLeaf = true;
+            metaInfo->rootIsLeaf = true;
+
+            bufMgr->unPinPage(file, headerPageNum, true);
+            bufMgr->unPinPage(file, rootPageNum, true);
+
+            FileScan fscan(relationName, bufMgr);
+
+            while(true)
+            {
+                try
+                {
+                    RecordId rid;
+                    fscan.scanNext(rid);
+                    std::string recordStr = fscan.getRecord();
+                    const char *record = recordStr.c_str();
+                    insertEntry(record + attrByteOffset, rid);
+
+                }
+                catch(EndOfFileException& e)
+                {
+                    break;
+                }
             }
         }
     }
@@ -185,7 +256,6 @@ header page for the B+ Tree file too for storing metadata of the index.
             PageId pageNum;
 
             bufMgr->allocPage(file, pageNum, page);
-            bufMgr->unPinPage(file, pageNum, false);
 
             NonLeafNodeInt* node = (NonLeafNodeInt*) page;
             node->keyArray[0] = split.key;
@@ -209,7 +279,14 @@ header page for the B+ Tree file too for storing metadata of the index.
                 node->level = 0;
             }
 
-            unpinnedCount += 1;
+            Page* headerPage;
+            bufMgr->readPage(file, headerPageNum, headerPage);
+            IndexMetaInfo* metaPage = (IndexMetaInfo*) headerPage;
+            metaPage -> rootPageNo = rootPageNum;
+            metaPage -> rootIsLeaf = false;
+
+            bufMgr->unPinPage(file, pageNum, true);
+            bufMgr->unPinPage(file, headerPageNum, true);
         }
 
         return;
@@ -219,14 +296,12 @@ header page for the B+ Tree file too for storing metadata of the index.
     {
         Page* page;
         bufMgr->readPage(file, pageNum, page);
-        bufMgr->unPinPage(file, pageNum, false);
-        pinnedCount += 1;
         NonLeafNodeInt* node = (NonLeafNodeInt*) page;
 
 		// find the smallest entry in the node with a key >= the element we are inserting
         int index = 0;
         int k = *((int*) key);
-        while (index < INTARRAYNONLEAFSIZE && node->keyArray[index] < k)
+        while (index < nodeOccupancy && node->keyArray[index] < k)
         {
             index++;
         }
@@ -251,7 +326,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                 Page* splitPage;
                 PageId splitID;
                 bufMgr->allocPage(file, splitID, splitPage);
-                bufMgr->unPinPage(file, splitID, false);
+                
                 NonLeafNodeInt* splitNode = (NonLeafNodeInt*) splitPage;
                 splitNode->level = node->level;
 
@@ -328,6 +403,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                         node->keyArray[i] = MAX_INT;
                     }
                 }
+                bufMgr->unPinPage(file, splitID, true);
             }
             else
             {
@@ -341,12 +417,13 @@ header page for the B+ Tree file too for storing metadata of the index.
 
                 pair.set(MAX_INT, MAX_INT);
             }
+            bufMgr->unPinPage(file, pageNum, true);
         }
         else
         {
             pair.set(MAX_INT, MAX_INT);
+            bufMgr->unPinPage(file, pageNum, false);
         }
-        unpinnedCount += 1;
         return pair;
     }
 
@@ -354,8 +431,7 @@ header page for the B+ Tree file too for storing metadata of the index.
     {
         Page* page;
         bufMgr->readPage(file, pageNum, page);
-        bufMgr->unPinPage(file, pageNum, false);
-        pinnedCount += 1;
+        
         LeafNodeInt* leaf = (LeafNodeInt*) page;
         int index = 0;
         int k = *((int*) key);
@@ -373,10 +449,14 @@ header page for the B+ Tree file too for storing metadata of the index.
             Page* split;
             PageId splitID;
             bufMgr->allocPage(file, splitID, split);
-            bufMgr->unPinPage(file, splitID, false);
             LeafNodeInt* splitNode = (LeafNodeInt*) split;
             splitNode->rightSibPageNo = leaf -> rightSibPageNo;
             leaf->rightSibPageNo = splitID;
+
+            for (int i = 0; i < leafOccupancy; i++)
+            {
+                splitNode-> keyArray[i] = MAX_INT;
+            }
 
             int mid = (leafOccupancy - 1) / 2;
 
@@ -387,10 +467,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                 {
                     splitNode->keyArray[i - mid] = leaf->keyArray[i];
                     splitNode->ridArray[i - mid] = leaf->ridArray[i];
-                }
-                for (int i = leafOccupancy - mid; i < leafOccupancy; i++)
-                {
-                    splitNode-> keyArray[i] = MAX_INT;
                 }
 
 				// shifts the elements greater than the element we are inserting right
@@ -424,11 +500,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                     splitNode->ridArray[i - mid + 1] = leaf->ridArray[i];
                 }
 
-                for (int i = leafOccupancy - mid + 1; i < leafOccupancy; i++)
-                {
-                    splitNode->keyArray[i] = MAX_INT;
-                }
-
                 for (int i = mid; i < leafOccupancy; i++)
                 {
                     leaf->keyArray[i] = MAX_INT;
@@ -437,7 +508,8 @@ header page for the B+ Tree file too for storing metadata of the index.
 
             PageKeyPair<int> pair;
             pair.set(splitID, splitNode->keyArray[0]);
-            unpinnedCount += 1;
+            bufMgr->unPinPage(file, pageNum, true);
+            bufMgr->unPinPage(file, splitID, true);
             return pair;
         }
         else
@@ -452,7 +524,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
             PageKeyPair<int> pair;
             pair.set(MAX_INT, MAX_INT);
-            unpinnedCount += 1;
+            bufMgr->unPinPage(file, pageNum, true);
             return pair;
         }
     }
@@ -490,8 +562,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         Page* page;
         PageId pageNum = rootPageNum;
         bufMgr->readPage(file, pageNum, page);
-        bufMgr->unPinPage(file, pageNum, false);
-        pinnedCount += 1;
+        
 
 		// if the root isn't a leaf node, traverse the B+ tree until we reach a leaf
         if (!rootIsLeaf)
@@ -500,15 +571,13 @@ header page for the B+ Tree file too for storing metadata of the index.
             while(true)
             {
                 int index = 0;
-                while (index < INTARRAYNONLEAFSIZE && node->keyArray[index] < lowValInt)
+                while (index < nodeOccupancy && node->keyArray[index] <= lowValInt)
                 {
                     index++;
                 }
-                unpinnedCount += 1;
+                bufMgr->unPinPage(file, pageNum, false);
                 pageNum = node->pageNoArray[index];
                 bufMgr->readPage(file, pageNum, page);
-                bufMgr->unPinPage(file, pageNum, false);
-                pinnedCount += 1;
 
                 if (node-> level == 1)
                 {
@@ -521,7 +590,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         LeafNodeInt* leaf = (LeafNodeInt*) page;
         int index = 0;
 		// find the first node >= the lower bound of our range
-        while(index < INTARRAYLEAFSIZE && leaf->keyArray[index] < lowValInt)
+        while(index < leafOccupancy && leaf->keyArray[index] < lowValInt)
         {
             index++;
         }
@@ -529,26 +598,29 @@ header page for the B+ Tree file too for storing metadata of the index.
 		// If the range is exclusive, find the first node > the lower bound of our range
         if (lowOp == GT)
         {
-            while(index < INTARRAYLEAFSIZE && leaf->keyArray[index] <= lowValInt)
+            while(index < leafOccupancy && leaf->keyArray[index] <= lowValInt)
             {
                 index++;
             }
         }
 
 		// every element in our B+ tree is below the range we are searching for
-        if (index >= INTARRAYLEAFSIZE)
+        if (index >= leafOccupancy)
         {
+            bufMgr->unPinPage(file, pageNum, false);
             throw NoSuchKeyFoundException();
         }
 
 		//  No elements within the range
         if (highOp == LT && leaf->keyArray[index] >= highValInt)
         {
+            bufMgr->unPinPage(file, pageNum, false);
             throw NoSuchKeyFoundException();
         }
 
         if (highOp == LTE && leaf->keyArray[index] > highValInt)
         {
+            bufMgr->unPinPage(file, pageNum, false);
             throw NoSuchKeyFoundException();
         }
 
@@ -578,11 +650,10 @@ header page for the B+ Tree file too for storing metadata of the index.
             {
                 throw IndexScanCompletedException();
             }
-            unpinnedCount += 1;
+            bufMgr->unPinPage(file, currentPageNum, false);
             currentPageNum = leaf->rightSibPageNo;
             bufMgr->readPage(file, currentPageNum, currentPageData);
-            bufMgr->unPinPage(file, currentPageNum, false);
-            pinnedCount += 1;
+            
             leaf = (LeafNodeInt*) currentPageData;
             nextEntry = 0;
         }
@@ -613,6 +684,7 @@ header page for the B+ Tree file too for storing metadata of the index.
             throw ScanNotInitializedException();
         }
 
+        bufMgr->unPinPage(file, currentPageNum, false);
         scanExecuting = false;
     }
 
@@ -620,14 +692,4 @@ header page for the B+ Tree file too for storing metadata of the index.
     {
         return rootIsLeaf;
     }
-
-    int32_t BTreeIndex::getPinnedCount()
-    {
-        return pinnedCount;
-    }
-
-    int32_t BTreeIndex::getUnpinnedCount()
-    {
-        return unpinnedCount;
-	}
 }

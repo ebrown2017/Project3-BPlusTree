@@ -128,6 +128,9 @@ struct IndexMetaInfo{
    * Page number of root page of the B+ Tree inside the file index file.
    */
 	PageId rootPageNo;
+
+
+  bool rootIsLeaf;
 };
 
 /*
@@ -293,9 +296,6 @@ class BTreeIndex {
 
   bool rootIsLeaf;
 
-  int32_t pinnedCount;
-  int32_t unpinnedCount;
-
   const int MAX_INT = 2147483647;
 
   PageKeyPair<int> insertNode(PageId pageNum, const void *key, const RecordId rid);
@@ -317,6 +317,21 @@ class BTreeIndex {
    */
 	BTreeIndex(const std::string & relationName, std::string & outIndexName,
 						BufMgr *bufMgrIn,	const int attrByteOffset,	const Datatype attrType);
+
+  /**
+   * BTreeIndex Constructor. 
+	 * Check to see if the corresponding index file exists. If so, open the file.
+	 * If not, create it and insert entries for every tuple in the base relation using FileScan class.
+   *
+   * @param relationName        Name of file.
+   * @param outIndexName        Return the name of index file.
+   * @param bufMgrIn						Buffer Manager Instance
+   * @param attrByteOffset			Offset of attribute, over which index is to be built, in the record
+   * @param attrType						Datatype of attribute over which index is built
+   * @throws  BadIndexInfoException     If the index file already exists for the corresponding attribute, but values in metapage(relationName, attribute byte offset, attribute type etc.) do not match with values received through constructor parameters.
+   */
+	BTreeIndex(const std::string & relationName, std::string & outIndexName,
+						BufMgr *bufMgrIn,	const int attrByteOffset,	const Datatype attrType, const int nodeOccupancy, const int leafOccupancy);
 	
 
   /**
@@ -375,10 +390,6 @@ class BTreeIndex {
 	void endScan();
 
   bool getNodeStatus();
-  bool getRootIsLead();
-
-  int32_t getPinnedCount();
-  int32_t getUnpinnedCount();
 	
 };
 
