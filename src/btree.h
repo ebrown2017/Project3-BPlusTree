@@ -129,7 +129,9 @@ struct IndexMetaInfo{
    */
 	PageId rootPageNo;
 
-
+  /**
+   * Whether the root of the tree is a leaf
+   */
   bool rootIsLeaf;
 };
 
@@ -294,11 +296,34 @@ class BTreeIndex {
    */
 	Operator	highOp;
 
+  /**
+   * Whether or not the roof is a leaf
+   */
   bool rootIsLeaf;
 
+  /**
+   * Maximum Integer value
+   */
   const int MAX_INT = 2147483647;
 
+  /**
+   * Inserts a new entry in subtree of the node with the given page number
+   * If the node is being split, return the key that will be pushed up and the page number of the new node.
+   * Otherwise, returns <MAX_INT, MAX_INT>
+   * @param pageNum page number of the node
+   * @param key			Key to insert, pointer to integer/double/char string
+   * @param rid			Record ID of a record whose entry is getting inserted into the index.
+   */
   PageKeyPair<int> insertNode(PageId pageNum, const void *key, const RecordId rid);
+
+  /**
+   * Inserts a new entry in leaf with the given page number
+   * If the leaf is being split, return the key that will be copied up and the page number of the new leaf.
+   * Otherwise, returns <MAX_INT, MAX_INT>
+   * @param pageNum page number of the leaf
+   * @param key			Key to insert, pointer to integer/double/char string
+   * @param rid			Record ID of a record whose entry is getting inserted into the index.
+   */
   PageKeyPair<int> insertLeaf(PageId pageNum, const void *key, const RecordId rid);
 	
  public:
@@ -319,7 +344,7 @@ class BTreeIndex {
 						BufMgr *bufMgrIn,	const int attrByteOffset,	const Datatype attrType);
 
   /**
-   * BTreeIndex Constructor. 
+   * BTreeIndex Constructor with specified node and leaf orders. Used for testing purposes only.
 	 * Check to see if the corresponding index file exists. If so, open the file.
 	 * If not, create it and insert entries for every tuple in the base relation using FileScan class.
    *
@@ -328,6 +353,8 @@ class BTreeIndex {
    * @param bufMgrIn						Buffer Manager Instance
    * @param attrByteOffset			Offset of attribute, over which index is to be built, in the record
    * @param attrType						Datatype of attribute over which index is built
+   * @param nodeOccupancy       The capacity of the nodes of the tree
+   * @param leafOccupancy       The capacity of the leaves of the tree
    * @throws  BadIndexInfoException     If the index file already exists for the corresponding attribute, but values in metapage(relationName, attribute byte offset, attribute type etc.) do not match with values received through constructor parameters.
    */
 	BTreeIndex(const std::string & relationName, std::string & outIndexName,
@@ -389,6 +416,9 @@ class BTreeIndex {
 	**/
 	void endScan();
 
+  /**
+   * Returns whether the root is a leaf, used mainly for testing purposes
+   */
   bool getNodeStatus();
 	
 };

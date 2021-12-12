@@ -82,12 +82,7 @@ void test1();
 void test2();
 void test3();
 void test4();
-
-// TEST 5
 void test5();
-void rootTests(BTreeIndex *index);
-void checkRoot(BTreeIndex *index);
-
 void test6();
 void test7();
 void test8();
@@ -96,7 +91,6 @@ void test10();
 void test11();
 void test12();
 void test13();
-void test14();
 
 void errorTests();
 void deleteRelation();
@@ -215,7 +209,6 @@ void test3()
 
 void test4()
 {
-	
 	// Test creates a relation and checks to see if root isnt a leaf, this indicates that a split occurred
 	std::cout << "--------------------" << std::endl;
 	std::cout << "Test 4: checking split functionality" << std::endl;
@@ -236,13 +229,15 @@ void test4()
 	{
 		std::cout << "Test 4 Passed" << std::endl;;
 	}
+
 	try
 	{
 		File::remove(intIndexName);
 	}
-  catch(const FileNotFoundException &e)
-  {
-  }
+  	catch(const FileNotFoundException &e)
+	{
+
+	}
 	deleteRelation();
 }
 
@@ -318,6 +313,7 @@ void test7()
 	{
 		std::cout << "Test 7 Passed" << std::endl;
 	}
+
 	try
 	{
 		File::remove(intIndexName);
@@ -436,11 +432,12 @@ void test10()
 
 void test11()
 {
-	// Create a relation with 50000 tuples in random order and perform index tests 
+	// Create a relation with 100,000 tuples in random order and perform index tests 
 	std::cout << "Test 11: relation with 100000 tuples" << std::endl;
 	createRelationRandomSize(100000);
 	try
 	{
+		// time duration to insert 100,000 records
 		auto begin = std::chrono::high_resolution_clock::now();
 		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
 		auto end = std::chrono::high_resolution_clock::now();
@@ -466,6 +463,7 @@ void test11()
 
 void largeTests(BTreeIndex* index)
 {
+	// tests for B+ trees with 100,000 nodes
 	checkPassFail(intScan(index,25,GT,40,LT), 14)
 	checkPassFail(intScan(index,20,GTE,35,LTE), 16)
 	checkPassFail(intScan(index,-3,GT,3,LT), 3)
@@ -488,11 +486,10 @@ void largeTests(BTreeIndex* index)
 
 void test12()
 {
+	// tests with tree with no entries added
 	std::cout << "Test 12: relation with no tuples" << std::endl;
 	createRelationRandomSize(0);
 	
-
-	// run some tests
 	emptyTests();
 	
 	try
@@ -508,7 +505,8 @@ void test12()
 
 void test13()
 {
-	std::cout << "Test 14: relation with 50000 tuples" << std::endl;
+	// test with a relation with 100000 tuples and a B+ tree with different capacities
+	std::cout << "Test 14: relation with 100000 tuples and specified capacities" << std::endl;
 	createRelationRandomSize(100000);
 	try
 	{
@@ -533,6 +531,7 @@ void test13()
 
 void emptyTests()
 {
+	// test for tree with no values
 	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
 	checkPassFail(intScan(&index,2,GT,10,LT), 0)
 	checkPassFail(intScan( &index, -2, GTE, 2, LTE), 0)
@@ -632,6 +631,7 @@ void createRelationBackward()
 		}
   }
 
+	// write to page
 	file1->writePage(new_page_number, new_page);
 }
 
@@ -700,9 +700,12 @@ void createRelationRandom()
 	file1->writePage(new_page_number, new_page);
 }
 
-// insert given number of relations in random order 
+// -----------------------------------------------------------------------------
+// createRelationRandomSize
+// -----------------------------------------------------------------------------
 void createRelationRandomSize(int relSize)
 {
+	// inserts specified number of records in random order
   // destroy any old copies of relation file
 	try
 	{
@@ -739,6 +742,7 @@ void createRelationRandomSize(int relSize)
 
     std::string new_data(reinterpret_cast<char*>(&record1), sizeof(RECORD));
 
+		// write records to page
 		while(1)
 		{
 			try
@@ -759,6 +763,7 @@ void createRelationRandomSize(int relSize)
 		i++;
   }
   
+	// write page
 	file1->writePage(new_page_number, new_page);
 }
 
@@ -776,31 +781,6 @@ void indexTests()
   catch(const FileNotFoundException &e)
   {
   }
-}
-
-void rootTests(BTreeIndex *index)
-{
-  	checkRoot(index);
-	try
-	{
-		File::remove(intIndexName);
-	}
-  catch(const FileNotFoundException &e)
-  {
-  }
-}
-
-void checkRoot(BTreeIndex *index)
-{
-  	//BTreeIndex index = BTreeIndex(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
-	bool nodeStatus = index->getNodeStatus();
-	if (nodeStatus) {
-		std::cout << "Test 5: FAILED: Root is leaf" << std::endl;
-	}
-	else
-	{
-		std::cout << "Test 5: PASSED: Root is not leaf" << std::endl;
-	}
 }
 
 // -----------------------------------------------------------------------------

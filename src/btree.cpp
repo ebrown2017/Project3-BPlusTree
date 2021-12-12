@@ -80,7 +80,9 @@ namespace badgerdb
 
             // initialize root node
             LeafNodeInt* root = (LeafNodeInt*) rootPage;
+            // set right sibling page number to max int value to denote no right sibling
             root->rightSibPageNo = MAX_INT;
+            // set entries of key array to max int value to denote no key in that index
             for (int i = 0; i < leafOccupancy; i++)
             {
                 root->keyArray[i] = MAX_INT;
@@ -169,7 +171,9 @@ namespace badgerdb
 
             // create root node
             LeafNodeInt* root = (LeafNodeInt*) rootPage;
+            // set right sibling page number to max int value to denote no right sibling
             root->rightSibPageNo = MAX_INT;
+            // set entries of key array to max int value to denote no key in that index
             for (int i = 0; i < leafOccupancy; i++)
             {
                 root->keyArray[i] = MAX_INT;
@@ -348,6 +352,7 @@ namespace badgerdb
                 // based on location of node inserted
                 if (index == mid)
                 {
+                    // copies right half of entries to new leaf
                     for (int i = mid; i < nodeOccupancy; i++)
                     {
                         splitNode->keyArray[i - mid] = node->keyArray[i];
@@ -364,6 +369,7 @@ namespace badgerdb
                 }
                 else if (index < mid)
                 {
+                    // copies right half of entries to new leaf
                     for (int i = mid; i < nodeOccupancy; i++)
                     {
                         splitNode->keyArray[i - mid] = node->keyArray[i];
@@ -374,6 +380,7 @@ namespace badgerdb
 
                     pair.set(splitID, node->keyArray[mid - 1]);
 
+                    // shift elements over in current leaf that are greater than the one we are inserting
                     for (int i = mid - 2; i >= index; i--)
                     {
                         node->keyArray[i + 1] = node->keyArray[i];
@@ -394,13 +401,16 @@ namespace badgerdb
                     pair.set(splitID, node->keyArray[mid]);
                     mid++;
                     splitNode->pageNoArray[0] = node->pageNoArray[mid];
+                    // copies right half of entries to new leaf
                     for (int i = mid; i < index; i++)
                     {
                         splitNode->keyArray[i - mid] = node->keyArray[i];
                         splitNode->pageNoArray[i - mid + 1] = node->pageNoArray[i + 1];
                     }
+
                     splitNode->keyArray[index - mid] = split.key;
                     splitNode->pageNoArray[index - mid + 1] = split.pageNo;
+
                     for (int i = index; i < nodeOccupancy; i++)
                     {
                         splitNode->keyArray[i - mid + 1] = node->keyArray[i];
@@ -445,6 +455,7 @@ namespace badgerdb
         Page* page;
         bufMgr->readPage(file, pageNum, page);
         
+        // figure out where to insert the new record
         LeafNodeInt* leaf = (LeafNodeInt*) page;
         int index = 0;
         int k = *((int*) key);
@@ -501,6 +512,7 @@ namespace badgerdb
             else
             {
                 mid++;
+                // copy the second half of the current leaf into the new leaf
                 for (int i = mid; i < index; i++)
                 {
                     splitNode->keyArray[i - mid] = leaf->keyArray[i];
@@ -514,6 +526,7 @@ namespace badgerdb
                     splitNode->ridArray[i - mid + 1] = leaf->ridArray[i];
                 }
 
+                // reset keys in current leaf
                 for (int i = mid; i < leafOccupancy; i++)
                 {
                     leaf->keyArray[i] = MAX_INT;
@@ -526,7 +539,7 @@ namespace badgerdb
         }
         else
         {
-            // Leaf isnt full, append to it
+            // Leaf isn't full, shift over elements to the right and add to leaf
             for (int i = leafOccupancy - 2; i >= index; i--)
             {
                 leaf->keyArray[i + 1] = leaf->keyArray[i];
@@ -537,6 +550,8 @@ namespace badgerdb
 
             pair.set(MAX_INT, MAX_INT);    
         }
+
+        // unpin pages
         bufMgr->unPinPage(file, pageNum, true);
         return pair;
     }
@@ -576,13 +591,13 @@ namespace badgerdb
         PageId pageNum = rootPageNum;
         bufMgr->readPage(file, pageNum, page);
         
-
 		// if the root isn't a leaf node, traverse the B+ tree until we reach a leaf
         if (!rootIsLeaf)
         {
             NonLeafNodeInt* node = (NonLeafNodeInt*) page;
             while(true)
             {
+                // figure out which child to traverse to
                 int index = 0;
                 while (index < nodeOccupancy && node->keyArray[index] <= lowValInt)
                 {
@@ -658,9 +673,10 @@ namespace badgerdb
 
         LeafNodeInt* leaf = (LeafNodeInt*) currentPageData;
 
-        // Find next entry matching the criteria
+        // If at the end of a leaf, go to next page
         if (nextEntry >= leafOccupancy || leaf->keyArray[nextEntry] == MAX_INT)
         {
+            // No more pages in tree, scan is completed
             if (leaf->rightSibPageNo == (PageId) MAX_INT)
             {
                 throw IndexScanCompletedException();
@@ -673,7 +689,7 @@ namespace badgerdb
             nextEntry = 0;
         }
 
-        // misc exception checks
+        // check if scan is completed
         if (highOp == LT && leaf->keyArray[nextEntry] >= highValInt)
         {
             throw IndexScanCompletedException();
