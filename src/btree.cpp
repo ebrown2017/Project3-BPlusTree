@@ -24,23 +24,6 @@ namespace badgerdb
 // -----------------------------------------------------------------------------
 // BTreeIndex::BTreeIndex -- Constructor
 // -----------------------------------------------------------------------------
-
-/*
-
-To create a disk image of the index file, you simply use the BlobFile constructor
-with the name of the index file.
-
-The file that you create is a “raw” file, i.e., it has no page
-structure on top of it.
-
-You will need to implement a structure on top of the pages that you
-get from the I/O Layer to implement the nodes of the B+ Tree.
-
-Note the PageFile class
-that we provide superimposes a page structure on the “raw” page. Just as the File class
-uses the first page as a header page to store the metadata for that file, you will dedicate a
-header page for the B+ Tree file too for storing metadata of the index.
-*/
     BTreeIndex::BTreeIndex(const std::string & relationName,
                            std::string & outIndexName,
                            BufMgr *bufMgrIn,
@@ -58,10 +41,13 @@ header page for the B+ Tree file too for storing metadata of the index.
         this->attrByteOffset = attrByteOffset;
         scanExecuting = false;
 
+        // Check to see if file exists
         try
         {
+            // file exists; open file
             file = new BlobFile(outIndexName, false);
 
+            // get root info from the meta page
             headerPageNum = file->getFirstPageNo();
             Page* headerPage;
             bufMgr->readPage(file, headerPageNum, headerPage);
@@ -74,20 +60,25 @@ header page for the B+ Tree file too for storing metadata of the index.
         }
         catch (FileNotFoundException& e)
         {
+            // File does not exist, create one
             file = new BlobFile(outIndexName, true);
 
+            // allocate pages for meta page and root node
             Page* headerPage;
             bufMgr->allocPage(file, headerPageNum, headerPage);
 
             Page* rootPage;
             bufMgr->allocPage(file, rootPageNum, rootPage);
 
+            // set data in meta page
             IndexMetaInfo* metaInfo = (IndexMetaInfo*) headerPage;
             metaInfo->attrByteOffset = attrByteOffset;
             metaInfo->attrType = attrType;
             metaInfo->rootPageNo = rootPageNum;
             strncpy(metaInfo->relationName, relationName.c_str(), relationName.length());
+            metaInfo->rootIsLeaf = true;
 
+            // initialize root node
             LeafNodeInt* root = (LeafNodeInt*) rootPage;
             root->rightSibPageNo = MAX_INT;
             for (int i = 0; i < leafOccupancy; i++)
@@ -96,13 +87,13 @@ header page for the B+ Tree file too for storing metadata of the index.
             }
 
             rootIsLeaf = true;
-            metaInfo->rootIsLeaf = true;
 
             bufMgr->unPinPage(file, headerPageNum, true);
             bufMgr->unPinPage(file, rootPageNum, true);
 
             FileScan fscan(relationName, bufMgr);
 
+            // Insert into B+ tree
             while(true)
             {
                 try
@@ -112,7 +103,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                     std::string recordStr = fscan.getRecord();
                     const char *record = recordStr.c_str();
                     insertEntry(record + attrByteOffset, rid);
-
                 }
                 catch(EndOfFileException& e)
                 {
@@ -122,6 +112,9 @@ header page for the B+ Tree file too for storing metadata of the index.
         }
     }
 
+// -----------------------------------------------------------------------------
+// BTreeIndex::BTreeIndex -- Constructor with specified node/leaf capacities
+// -----------------------------------------------------------------------------
     BTreeIndex::BTreeIndex(const std::string & relationName,
                            std::string & outIndexName,
                            BufMgr *bufMgrIn,
@@ -139,10 +132,13 @@ header page for the B+ Tree file too for storing metadata of the index.
         this->attrByteOffset = attrByteOffset;
         scanExecuting = false;
 
+        // Check to see if file exist
         try
         {
+            // file exists, open file
             file = new BlobFile(outIndexName, false);
 
+            // get root info from meta page
             headerPageNum = file->getFirstPageNo();
             Page* headerPage;
             bufMgr->readPage(file, headerPageNum, headerPage);
@@ -151,24 +147,27 @@ header page for the B+ Tree file too for storing metadata of the index.
             bufMgr->unPinPage(file, headerPageNum, false);
 
             rootIsLeaf = metaInfo->rootIsLeaf;
-
         }
         catch (FileNotFoundException& e)
         {
+            // File does not exist, create it
             file = new BlobFile(outIndexName, true);
 
+            // allocate pages for meta info and root noe
             Page* headerPage;
             bufMgr->allocPage(file, headerPageNum, headerPage);
 
             Page* rootPage;
             bufMgr->allocPage(file, rootPageNum, rootPage);
 
+            // set info in meta page
             IndexMetaInfo* metaInfo = (IndexMetaInfo*) headerPage;
             metaInfo->attrByteOffset = attrByteOffset;
             metaInfo->attrType = attrType;
             metaInfo->rootPageNo = rootPageNum;
             strncpy(metaInfo->relationName, relationName.c_str(), relationName.length());
 
+            // create root node
             LeafNodeInt* root = (LeafNodeInt*) rootPage;
             root->rightSibPageNo = MAX_INT;
             for (int i = 0; i < leafOccupancy; i++)
@@ -184,6 +183,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
             FileScan fscan(relationName, bufMgr);
 
+            // Insert into B+ tree
             while(true)
             {
                 try
@@ -193,7 +193,6 @@ header page for the B+ Tree file too for storing metadata of the index.
                     std::string recordStr = fscan.getRecord();
                     const char *record = recordStr.c_str();
                     insertEntry(record + attrByteOffset, rid);
-
                 }
                 catch(EndOfFileException& e)
                 {
@@ -222,6 +221,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
     void BTreeIndex::insertEntry(const void *key, const RecordId rid)
     {
+        // Splitting logic
         /*
         If the tree is empty insert the root node
         Else determine if the value should go to left or right of the root
@@ -236,8 +236,6 @@ header page for the B+ Tree file too for storing metadata of the index.
             c) insert index entry pointing towards the new half of the split entry into the parent entry
 
          */
-
-
         PageKeyPair<int> split;
         if (rootIsLeaf)
         {
@@ -279,6 +277,7 @@ header page for the B+ Tree file too for storing metadata of the index.
                 node->level = 0;
             }
 
+            //  update root page number in the header
             Page* headerPage;
             bufMgr->readPage(file, headerPageNum, headerPage);
             IndexMetaInfo* metaPage = (IndexMetaInfo*) headerPage;
@@ -291,6 +290,10 @@ header page for the B+ Tree file too for storing metadata of the index.
 
         return;
     }
+
+    // -----------------------------------------------------------------------------
+    // BTreeIndex::insertNode
+    // -----------------------------------------------------------------------------
 
     PageKeyPair<int> BTreeIndex::insertNode(PageId pageNum, const void *key, const RecordId rid)
     {
@@ -306,6 +309,7 @@ header page for the B+ Tree file too for storing metadata of the index.
             index++;
         }
 
+        // Determine if the current node is at the level above the leaf nodes
         PageKeyPair<int> split;
         if (node-> level == 1)
         {
@@ -317,16 +321,19 @@ header page for the B+ Tree file too for storing metadata of the index.
         }
 
         PageKeyPair<int> pair;
+        // determine if children of node were split
         if (split.key != MAX_INT)
         {
+            // determine if this node needs to split
             if (node->keyArray[nodeOccupancy - 1] != MAX_INT)
             {
-                //split node
+                //split node using logic described in insertEntry()
 
                 Page* splitPage;
                 PageId splitID;
                 bufMgr->allocPage(file, splitID, splitPage);
                 
+                // create new node for splitting
                 NonLeafNodeInt* splitNode = (NonLeafNodeInt*) splitPage;
                 splitNode->level = node->level;
 
@@ -337,6 +344,8 @@ header page for the B+ Tree file too for storing metadata of the index.
 
                 int mid = (nodeOccupancy) / 2;
 
+                // determine how to split and which key to push up 
+                // based on location of node inserted
                 if (index == mid)
                 {
                     for (int i = mid; i < nodeOccupancy; i++)
@@ -407,6 +416,7 @@ header page for the B+ Tree file too for storing metadata of the index.
             }
             else
             {
+                // shift keys right
                 for (int i = nodeOccupancy - 2; i >= index; i--)
                 {
                     node->keyArray[i + 1] = node->keyArray[i];
@@ -427,6 +437,9 @@ header page for the B+ Tree file too for storing metadata of the index.
         return pair;
     }
 
+    /*
+    Helper method for the insertNode, manages adding a leaf to the b+ tree.
+    */
     PageKeyPair<int> BTreeIndex::insertLeaf(PageId pageNum, const void *key, const RecordId rid)
     {
         Page* page;
@@ -441,6 +454,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         }
 
 		// if the leaf is full, split into two leaves
+        PageKeyPair<int> pair;
         if (leaf->keyArray[leafOccupancy - 1] != MAX_INT)
         {
             //split node
@@ -506,14 +520,13 @@ header page for the B+ Tree file too for storing metadata of the index.
                 }
             }
 
-            PageKeyPair<int> pair;
             pair.set(splitID, splitNode->keyArray[0]);
-            bufMgr->unPinPage(file, pageNum, true);
             bufMgr->unPinPage(file, splitID, true);
             return pair;
         }
         else
         {
+            // Leaf isnt full, append to it
             for (int i = leafOccupancy - 2; i >= index; i--)
             {
                 leaf->keyArray[i + 1] = leaf->keyArray[i];
@@ -522,11 +535,10 @@ header page for the B+ Tree file too for storing metadata of the index.
             leaf->keyArray[index] = k;
             leaf->ridArray[index] = rid;
 
-            PageKeyPair<int> pair;
-            pair.set(MAX_INT, MAX_INT);
-            bufMgr->unPinPage(file, pageNum, true);
-            return pair;
+            pair.set(MAX_INT, MAX_INT);    
         }
+        bufMgr->unPinPage(file, pageNum, true);
+        return pair;
     }
 
 // -----------------------------------------------------------------------------
@@ -552,6 +564,7 @@ header page for the B+ Tree file too for storing metadata of the index.
         lowValInt = *((int*) lowValParm);
         highValInt = *((int*) highValParm);
 
+        // check for bad scan range
         if (lowValInt > highValInt)
         {
             throw BadScanrangeException();
@@ -637,6 +650,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
     void BTreeIndex::scanNext(RecordId& outRid)
     {
+        // Check to ensure we have active scan
         if (!scanExecuting)
         {
             throw ScanNotInitializedException();
@@ -644,6 +658,7 @@ header page for the B+ Tree file too for storing metadata of the index.
 
         LeafNodeInt* leaf = (LeafNodeInt*) currentPageData;
 
+        // Find next entry matching the criteria
         if (nextEntry >= leafOccupancy || leaf->keyArray[nextEntry] == MAX_INT)
         {
             if (leaf->rightSibPageNo == (PageId) MAX_INT)
@@ -658,6 +673,7 @@ header page for the B+ Tree file too for storing metadata of the index.
             nextEntry = 0;
         }
 
+        // misc exception checks
         if (highOp == LT && leaf->keyArray[nextEntry] >= highValInt)
         {
             throw IndexScanCompletedException();
@@ -673,10 +689,10 @@ header page for the B+ Tree file too for storing metadata of the index.
         nextEntry++;
     }
 
-// -----------------------------------------------------------------------------
-// BTreeIndex::endScan
-// -----------------------------------------------------------------------------
-//
+    // -----------------------------------------------------------------------------
+    // BTreeIndex::endScan
+    // -----------------------------------------------------------------------------
+    //
     void BTreeIndex::endScan()
     {
         if (!scanExecuting)
@@ -687,9 +703,14 @@ header page for the B+ Tree file too for storing metadata of the index.
         bufMgr->unPinPage(file, currentPageNum, false);
         scanExecuting = false;
     }
-
+    
+    // -----------------------------------------------------------------------------
+    // BTreeIndex::getNodesStatus
+    // -----------------------------------------------------------------------------
+    //
     bool BTreeIndex::getNodeStatus()
     {
+        // return if node is leaf or not, useful in testing
         return rootIsLeaf;
     }
 }

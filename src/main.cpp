@@ -519,7 +519,6 @@ void test13()
 	{
 		std::cout << "test failed" << std::endl;
 	}
-
 	
 	try
 	{
