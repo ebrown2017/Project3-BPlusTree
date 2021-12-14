@@ -358,7 +358,7 @@ namespace badgerdb
                         splitNode->keyArray[i - mid] = node->keyArray[i];
                         splitNode->pageNoArray[i - mid + 1] = node->pageNoArray[i + 1];
                     }
-                    splitNode->keyArray[0] = split.pageNo;
+                    splitNode->pageNoArray[0] = split.pageNo;
                     
                     for (int i = mid; i < nodeOccupancy; i++)
                     {
@@ -485,7 +485,7 @@ namespace badgerdb
 
             int mid = (leafOccupancy - 1) / 2;
 
-            if (index < mid)
+            if (index <= mid)
             {
 				// copies the second half of the leaf to the new leaf
                 for (int i = mid; i < leafOccupancy; i++)
@@ -535,7 +535,6 @@ namespace badgerdb
 
             pair.set(splitID, splitNode->keyArray[0]);
             bufMgr->unPinPage(file, splitID, true);
-            return pair;
         }
         else
         {
@@ -587,6 +586,12 @@ namespace badgerdb
         lowOp = lowOpParm;
         highOp = highOpParm;
 
+        // treat all GT parameters as GTE parameters
+        if (lowOp == GT)
+        {
+            lowValInt++;
+        }
+
         Page* page;
         PageId pageNum = rootPageNum;
         bufMgr->readPage(file, pageNum, page);
@@ -621,15 +626,6 @@ namespace badgerdb
         while(index < leafOccupancy && leaf->keyArray[index] < lowValInt)
         {
             index++;
-        }
-
-		// If the range is exclusive, find the first node > the lower bound of our range
-        if (lowOp == GT)
-        {
-            while(index < leafOccupancy && leaf->keyArray[index] <= lowValInt)
-            {
-                index++;
-            }
         }
 
 		// every element in our B+ tree is below the range we are searching for

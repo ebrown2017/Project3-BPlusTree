@@ -75,7 +75,8 @@ int intScan(BTreeIndex *index, int lowVal, Operator lowOp, int highVal, Operator
 void indexTests();
 void largeTests(BTreeIndex *index);
 void emptyTests();
-void smallTests();
+void smallTests(BTreeIndex *index);
+void allTests(BTreeIndex* index, int relSize);
 
 // Given tests
 void test1();
@@ -91,6 +92,10 @@ void test10();
 void test11();
 void test12();
 void test13();
+void test14();
+void test15();
+void test16();
+void test17();
 
 void errorTests();
 void deleteRelation();
@@ -166,6 +171,10 @@ int main(int argc, char **argv)
 	test11();
 	test12();
 	test13();
+	test14();
+	test15();
+	test16();
+	test17();
 	
 	errorTests();
 
@@ -463,7 +472,7 @@ void test11()
 
 void largeTests(BTreeIndex* index)
 {
-	// tests for B+ trees with 100,000 nodes
+	// tests for B+ trees with 100,000 entries
 	checkPassFail(intScan(index,25,GT,40,LT), 14)
 	checkPassFail(intScan(index,20,GTE,35,LTE), 16)
 	checkPassFail(intScan(index,-3,GT,3,LT), 3)
@@ -506,7 +515,7 @@ void test12()
 void test13()
 {
 	// test with a relation with 100000 tuples and a B+ tree with different capacities
-	std::cout << "Test 14: relation with 100000 tuples and specified capacities" << std::endl;
+	std::cout << "Test 13: relation with 100000 tuples and specified capacities" << std::endl;
 	createRelationRandomSize(100000);
 	try
 	{
@@ -529,12 +538,149 @@ void test13()
 	deleteRelation();
 }
 
+void test14()
+{
+	std::cout << "Test 14: root is leaf" << std::endl;
+	createRelationRandomSize(100);
+	try
+	{
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		smallTests(&index);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "Test failed" << std::endl;
+	}
+	
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+
+}
+
+void test15()
+{
+	std::cout << "Test 15: relation with 100 tuples and specified capacities" << std::endl;
+	createRelationRandomSize(100);
+	try
+	{
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER, 6, 4);
+		smallTests(&index);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "Test failed" << std::endl;
+	}
+	
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+
+}
+
+void test16()
+{
+	std::cout << "Test 16: test for when the file already exists" << std::endl;
+	createRelationRandomSize(100);
+	try
+	{
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		smallTests(&index);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "Test failed" << std::endl;
+	}
+
+	try
+	{
+		BTreeIndex index2(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
+		smallTests(&index2);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "Test failed" << std::endl;
+	}
+	
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+
+}
+
+void smallTests(BTreeIndex* index)
+{
+	// tests for tree with 100 values
+	checkPassFail(intScan(index, 0, GTE, 100, LT), 100)
+	checkPassFail(intScan(index,25,GT,40,LT), 14)
+	checkPassFail(intScan(index,20,GTE,35,LTE), 16)
+	checkPassFail(intScan(index,-3,GT,3,LT), 3)
+	checkPassFail(intScan(index,996,GT,1001,LT), 0)
+	checkPassFail(intScan(index,0,GT,1,LT), 0)
+	checkPassFail(intScan(index,59,GT,81,LT), 21)
+}
+
 void emptyTests()
 {
 	// test for tree with no values
 	BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER);
 	checkPassFail(intScan(&index,2,GT,10,LT), 0)
 	checkPassFail(intScan( &index, -2, GTE, 2, LTE), 0)
+}
+
+void test17()
+{
+	std::cout << "Test 17: Tests that each individual entry exists in B+ tree with 100,000 entries and specified capacity" << std::endl;
+	createRelationRandomSize(100000);
+	try
+	{
+		BTreeIndex index(relationName, intIndexName, bufMgr, offsetof(tuple,i), INTEGER, 100, 60);
+		allTests(&index, 100000);
+	}
+	catch(std::exception &e)
+	{
+		std::cout << "Test 17 failed" << std::endl;
+	}
+	
+	try
+	{
+		File::remove(intIndexName);
+	}
+	catch(const FileNotFoundException &e)
+	{
+
+	}
+	deleteRelation();
+}
+
+void allTests(BTreeIndex* index, int relSize)
+{
+	// checks that all entries from [0, relSize)) are in the B+ tree in one search
+	checkPassFail(intScan(index, 0,  GTE, relSize, LT), relSize)
+	// checks that all entries from [0, relSize)) are in the B+ tree individually
+	for (int i = 0; i < relSize; i++)
+	{
+		checkPassFail(intScan(index,i, GTE, i + 1, LT), 1)
+		checkPassFail(intScan(index,i - 1, GT, i , LTE), 1)
+	}
 }
 
 // -----------------------------------------------------------------------------
